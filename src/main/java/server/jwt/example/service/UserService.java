@@ -5,7 +5,7 @@ import server.jwt.example.domain.Role;
 
 import java.util.List;
 
-public interface UserServoce {
+public interface UserService {
 
     AppUser saveUser(AppUser user);
     Role saveRole(Role role);
