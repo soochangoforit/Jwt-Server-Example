@@ -21,12 +21,12 @@ public class Application {
 
 
 	@Bean
-	PasswordEncoder passwordEncoder(){
+	BCryptPasswordEncoder passwordEncoder(){
 		return new BCryptPasswordEncoder();
 	}
 
 
-
+/*
 	// run after the application has initialized
 	@Bean
 	CommandLineRunner run(UserService userService) {
@@ -51,6 +51,6 @@ public class Application {
 			userService.addRoleToUser("ddddd", "ROLE_SUPER_ADMIN");
 			userService.addRoleToUser("ddddd", "ROLE_ADMIN");
 			userService.addRoleToUser("ddddd", "ROLE_USER");
-		};
+		};*/
 	}
-}
+
