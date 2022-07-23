@@ -13,6 +13,7 @@ import server.jwt.example.domain.AppUser;
 import server.jwt.example.domain.Role;
 import server.jwt.example.repository.RoleRepository;
 import server.jwt.example.repository.UserRepository;
+import server.jwt.example.security.PrincipalDetails;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -40,13 +41,7 @@ public class UserServiceImpl implements UserService, UserDetailsService { // tod
             log.info("User found in the database: {}", username);
         }
 
-        Collection<SimpleGrantedAuthority> authorities = new ArrayList<>();
-        user.getRoles().forEach(role -> {
-            authorities.add(new SimpleGrantedAuthority(role.getName()));
-        });
-
-        return new org.springframework.security.core.userdetails
-                .User(user.getUsername(), user.getPassword(),authorities); // spring Security session에 저장된다.
+        return new PrincipalDetails(user); // spring Security session에 저장된다.
     }
 
 
@@ -60,7 +55,7 @@ public class UserServiceImpl implements UserService, UserDetailsService { // tod
 
     @Override
     public Role saveRole(Role role) {
-        log.info("Saving new role {} to the database", role.getName());
+        log.info("Saving new role {} to the database", role.getAuthority());
         return roleRepository.save(role);
     }
 
@@ -68,7 +63,7 @@ public class UserServiceImpl implements UserService, UserDetailsService { // tod
     public void addRoleToUser(String username, String roleName) {
         log.info("Adding role {} to user {}" , roleName, username);
         AppUser user = userRepository.findByUsername(username);
-        Role role = roleRepository.findByName(roleName);
+        Role role = roleRepository.findByAuthority(roleName);
         user.getRoles().add(role);
     }
 
