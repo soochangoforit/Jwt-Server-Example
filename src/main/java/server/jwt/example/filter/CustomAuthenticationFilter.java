@@ -12,6 +12,10 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import server.jwt.example.domain.AppUser;
+import server.jwt.example.dto.request.LoginDto;
+import server.jwt.example.manager.CustomAuthenticationManager;
+import server.jwt.example.security.PrincipalDetails;
 
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
@@ -20,6 +24,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -29,10 +34,10 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFilter {
 
     // need to calling the authentication manager to authenticate the user
-    private final AuthenticationManager authenticationManager;
+    private final CustomAuthenticationManager authenticationManager;
 
     @Autowired
-    public CustomAuthenticationFilter(AuthenticationManager authenticationManager) {
+    public CustomAuthenticationFilter(CustomAuthenticationManager authenticationManager) {
         this.authenticationManager = authenticationManager;
     }
 
@@ -42,13 +47,23 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
     public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException {
 
         // also can use the object Mapper and then grab the information we need from the request
-        String username = request.getParameter("username");
-        String password = request.getParameter("password");
+        //String username = request.getParameter("username");
+        //String password = request.getParameter("password");
 
-        log.info("username: {}", username); log.info("password: {}", password);
+        // use objectMapper for binding reqest
+        ObjectMapper objectMapper = new ObjectMapper();
+        LoginDto loginDto;
+        try {
+            loginDto = objectMapper.readValue(request.getInputStream(), LoginDto.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+
+        //log.info("username: {}", username); log.info("password: {}", password);
 
         // need to create an object of username password authentication token
-        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username, password);
+        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(loginDto.getUsername(), loginDto.getPassword());
 
         // in this class, just grabbing the information that is already coming with the request
         // and then pass it into the username password authentication token
@@ -56,8 +71,8 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
 
 
         // this return will be going to UserDetailServiceImpl.loadUserByUsername() to check if the user is in the database or authenticate the user
+        // UsernamePasswordAuthenticationToken으로 한번 감싸진, PrincipalDetails가 Security Session에 들어간다.
         return authenticationManager.authenticate(authenticationToken);
-
 
 
     }
@@ -71,12 +86,13 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
     @Override
     protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain, Authentication authentication) throws IOException, ServletException {
         // need to have some sort of way to generate the token , sign the token and then send it over to the user
-        // using library for make the token (JWT)
+        // using library for make the token (JWT
 
         // to get the user that's been successfully logged in, we can define a user
         // so  that's the user coming from spring security
         // so that's not the user will define in our domain, as you can see here, it's coming from org.springframework.security.core.userdetails.UserDetails
-        User user = (User) authentication.getPrincipal();
+        PrincipalDetails principalDetails = (PrincipalDetails) authentication.getPrincipal();
+        AppUser user = principalDetails.getAppUser();
 
         // we can grab information from that logged in user to create the json web token
         // define algorithm , we cas see that this is coming from the library that we just added
@@ -85,10 +101,12 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
 
         // 여기서의 user는 domain에서 만든 user가 아니라 userDetails이다. 주의하자.
         String access_token = JWT.create()
-                .withSubject(user.getUsername()) // subject can be really any String that we want , So that can be like , the user Id or the username or something unique about the user, so that we can identify the user by that specific token
+                .withSubject(user.getId().toString()) // subject can be really any String that we want , So that can be like , the user Id or the username or something unique about the user, so that we can identify the user by that specific token
                 .withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000)) // going to be one min, because it's a token that's going to have very short time to live so that they can give us the refresh token , and server give client a new token
                 .withIssuer(request.getRequestURI().toString()) // say like company name or the author of this token // SimpleGrantedAuthority 클래스는 String으로 이루어져 있었다. token claim에 저장할때는 GrantedAuthority 형태로 저장하고자 한다.
-                .withClaim("roles" , user.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toList())) // authorities or roles that we put in for that specific user
+                // need to convert list of granted authorities to list of strings
+                .withClaim("username" , user.getUsername())
+                .withClaim("roles" ,  principalDetails.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toList())) // authorities or roles that we put in for that specific user
                 .sign(algorithm);
 
         // 우선 클라이언트는 최초 로그인 성공 시점에 access , refresh token 둘다 받는다.
@@ -101,7 +119,8 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
         // if access token expired, then client going to send the refresh token to the server, and then
         // server is going to take that refresh token, validate it, and then give them another access token
         String refresh_token = JWT.create()
-                .withSubject(user.getUsername())
+                .withSubject(user.getId().toString())
+                .withClaim("username" , user.getUsername())
                 .withExpiresAt(new Date(System.currentTimeMillis() + 30 * 60 * 1000)) // going to give this more time, give this a week or a day
                 .withIssuer(request.getRequestURI().toString()) // we don't need to pass roles
                 .sign(algorithm);
