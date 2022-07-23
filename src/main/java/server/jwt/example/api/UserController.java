@@ -9,10 +9,15 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.annotation.Secured;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import server.jwt.example.domain.AppUser;
 import server.jwt.example.domain.Role;
+import server.jwt.example.security.PrincipalDetails;
 import server.jwt.example.service.UserService;
 
 import javax.servlet.http.HttpServletRequest;
@@ -33,6 +38,17 @@ public class UserController {
 
     private final UserService userService;
 
+
+
+    @PostMapping("/write")
+    @Secured("ROLE_SUPER_ADMIN") // 권한이 필요한 부분에 접근시, 어떤 사용자가 해당 요청을 확인했는지 확인하기 위해 @AuthenticationPrincipal은 JwtAuthorizationFilter 에서 set을 통해서 spring security session에 넣어준다.
+    public String writeTest(@RequestBody String text, @AuthenticationPrincipal Long id) {
+
+        log.info("writeTest : {}", text);
+        log.info("user principal id : {}" , id);
+
+        return text;
+    }
 
 
     @GetMapping("/users")
@@ -78,13 +94,14 @@ public class UserController {
                 // and then now, we can do the decoded token
                 DecodedJWT decodedJWT = verifier.verify(refresh_token); // this is the decoded token
 
-                String username = decodedJWT.getSubject();
+                String username = decodedJWT.getClaim("username").asString(); // get the username from the token
                 AppUser user = userService.getUser(username);
                 String access_token = JWT.create()
-                        .withSubject(user.getUsername())
+                        .withSubject(user.getId().toString())
                         .withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000))
                         .withIssuer(request.getRequestURI().toString())
-                        .withClaim("roles", user.getRoles().stream().map(Role::getName).collect(Collectors.toList()))
+                        .withClaim("username", user.getUsername())
+                        .withClaim("roles", user.getRoles().stream().map(Role::getAuthority).collect(Collectors.toList()))
                         .sign(algorithm);
                 Map<String, String> tokens = new HashMap<>();
                 tokens.put("access_token", access_token);
