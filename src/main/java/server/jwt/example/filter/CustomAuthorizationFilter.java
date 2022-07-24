@@ -52,39 +52,7 @@ public class CustomAuthorizationFilter extends BasicAuthenticationFilter {
 
             try{
 
-                String token = authorizationHeader.substring("Bearer ".length()); // just need token without "Bearer"
-                Algorithm algorithm = Algorithm.HMAC256("secret".getBytes()); // use same secret here when we made token
-
-                // we need the alogrithm , the same secre key that we use to edcode the token and then pass that algorithm to the verifier
-                JWTVerifier verifier = JWT.require(algorithm).build(); // this is the verifier that we need to use to verify the token
-
-                // and then now, we can do the decoded token
-                DecodedJWT decodedJWT = verifier.verify(token); // this is the decoded token
-
-                // can grab user information from the decoded token
-                Long id = Long.valueOf(decodedJWT.getSubject()); // this is the username that we stored in the token
-                // we don't need the password, because at this point, the user has been authenticated, and there JSON web token or their access token is valid .
-                // we just need to set them in the authentication context
-                String[] roles = decodedJWT.getClaim("roles").asArray(String.class);
-
-                // we need to get those roles and convert them into something that extends GrantedAuthority
-                // Spring Security is expecting as the rules of the user, like something that extends GrantedAuthority
-                Collection<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                stream(roles).forEach(role -> authorities.add(new SimpleGrantedAuthority(role))); // role is consisted with "ROLE_USER"
-
-                //AppUser user = userRepository.findByUsername(username);
-
-
-                UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(id, null, authorities); // 이미 인증된 사용자 이기 때문ㅇ pw는 필요 X
-
-                // todo : 아직까지 이러한 과정으로 토큰을 뜯어서 보아도, 사용자가 어떤 권한을 가지는지만 알지
-                //  해당 사용자가 자신 권한에게 맞는 url을 요청했는지 확인하지는 못한다. 권한에 맞는 url를 요청했는지 판단은 config에서 판단한다.
-
-                // need to set this user the security context holder
-                // hey, security !! this is the user here's , their username , roles , there what that can do in the application
-                // so Spring is going to look at the user , look at their role , and determine what resources they can access
-                // and what they can access, depending on the roles.
-                SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                verifyTokenAndSetSecuritySession(authorizationHeader);
 
                 filterChain.doFilter(request, response); // 계속해서 진행한다. todo : 꼭 필요하다. 다음단계로 넘어가기 위해서는
 
@@ -95,8 +63,6 @@ public class CustomAuthorizationFilter extends BasicAuthenticationFilter {
                 log.error("Error logging in: {}" , exception.getMessage());
                 response.setHeader("error", exception.getMessage());
                 response.setStatus(FORBIDDEN.value());
-
-                //response.sendError(FORBIDDEN.value());
 
                 Map<String , String> error = new HashMap<>();
                 error.put("error_message" , exception.getMessage());
@@ -110,5 +76,41 @@ public class CustomAuthorizationFilter extends BasicAuthenticationFilter {
             filterChain.doFilter(request, response);
         }
 
+    }
+
+    private void verifyTokenAndSetSecuritySession(String authorizationHeader) {
+        String token = authorizationHeader.substring("Bearer ".length()); // just need token without "Bearer"
+        Algorithm algorithm = Algorithm.HMAC256("secret".getBytes()); // use same secret here when we made token
+
+        // we need the alogrithm , the same secre key that we use to edcode the token and then pass that algorithm to the verifier
+        JWTVerifier verifier = JWT.require(algorithm).build(); // this is the verifier that we need to use to verify the token
+
+        // and then now, we can do the decoded token
+        DecodedJWT decodedJWT = verifier.verify(token); // this is the decoded token
+
+        // can grab user information from the decoded token
+        Long id = Long.valueOf(decodedJWT.getSubject()); // this is the username that we stored in the token
+        // we don't need the password, because at this point, the user has been authenticated, and there JSON web token or their access token is valid .
+        // we just need to set them in the authentication context
+        String[] roles = decodedJWT.getClaim("roles").asArray(String.class);
+
+        // we need to get those roles and convert them into something that extends GrantedAuthority
+        // Spring Security is expecting as the rules of the user, like something that extends GrantedAuthority
+        Collection<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        stream(roles).forEach(role -> authorities.add(new SimpleGrantedAuthority(role))); // role is consisted with "ROLE_USER"
+
+        //AppUser user = userRepository.findByUsername(username);
+
+
+        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(id, null, authorities); // 이미 인증된 사용자 이기 때문ㅇ pw는 필요 X
+
+        // todo : 아직까지 이러한 과정으로 토큰을 뜯어서 보아도, 사용자가 어떤 권한을 가지는지만 알지
+        //  해당 사용자가 자신 권한에게 맞는 url을 요청했는지 확인하지는 못한다. 권한에 맞는 url를 요청했는지 판단은 config에서 판단한다.
+
+        // need to set this user the security context holder
+        // hey, security !! this is the user here's , their username , roles , there what that can do in the application
+        // so Spring is going to look at the user , look at their role , and determine what resources they can access
+        // and what they can access, depending on the roles.
+        SecurityContextHolder.getContext().setAuthentication(authenticationToken);
     }
 }

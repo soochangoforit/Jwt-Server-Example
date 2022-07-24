@@ -18,6 +18,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import server.jwt.example.domain.AppUser;
 import server.jwt.example.domain.Role;
 import server.jwt.example.security.PrincipalDetails;
+import server.jwt.example.service.JwtService;
 import server.jwt.example.service.UserService;
 
 import javax.servlet.http.HttpServletRequest;
@@ -38,10 +39,14 @@ public class UserController {
 
     private final UserService userService;
 
+    private final JwtService jwtService;
+
+
+
 
 
     @PostMapping("/write")
-    @Secured("ROLE_SUPER_ADMIN") // 권한이 필요한 부분에 접근시, 어떤 사용자가 해당 요청을 확인했는지 확인하기 위해 @AuthenticationPrincipal은 JwtAuthorizationFilter 에서 set을 통해서 spring security session에 넣어준다.
+    @Secured("ROLE_USER") // 권한이 필요한 부분에 접근시, 어떤 사용자가 해당 요청을 확인했는지 확인하기 위해 @AuthenticationPrincipal은 JwtAuthorizationFilter 에서 set을 통해서 spring security session에 넣어준다.
     public String writeTest(@RequestBody String text, @AuthenticationPrincipal Long id) {
 
         log.info("writeTest : {}", text);
@@ -85,27 +90,35 @@ public class UserController {
         if(authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
 
             try {
-                String refresh_token = authorizationHeader.substring("Bearer ".length()); // just need token without "Bearer"
-                Algorithm algorithm = Algorithm.HMAC256("secret".getBytes()); // use same secret here when we made token
 
-                // we need the alogrithm , the same secre key that we use to edcode the token and then pass that algorithm to the verifier
-                JWTVerifier verifier = JWT.require(algorithm).build(); // this is the verifier that we need to use to verify the token
+                Map<String, String> tokens = jwtService.getNewAccessTokenWithRefreshToken(request, authorizationHeader, "secret", 10, 60);
 
-                // and then now, we can do the decoded token
-                DecodedJWT decodedJWT = verifier.verify(refresh_token); // this is the decoded token
 
-                String username = decodedJWT.getClaim("username").asString(); // get the username from the token
-                AppUser user = userService.getUser(username);
-                String access_token = JWT.create()
-                        .withSubject(user.getId().toString())
-                        .withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000))
-                        .withIssuer(request.getRequestURI().toString())
-                        .withClaim("username", user.getUsername())
-                        .withClaim("roles", user.getRoles().stream().map(Role::getAuthority).collect(Collectors.toList()))
-                        .sign(algorithm);
-                Map<String, String> tokens = new HashMap<>();
-                tokens.put("access_token", access_token);
-                tokens.put("refresh_token", refresh_token); // 프론트에서 받은 refresh token을 그대로 넣어준다. , refresh 마저 유효기간이 지나면 새롭게 로그인 필요
+//                String refresh_token = authorizationHeader.substring("Bearer ".length()); // just need token without "Bearer"
+//                Algorithm algorithm = Algorithm.HMAC256("secret".getBytes()); // use same secret here when we made token
+//
+//                // we need the alogrithm , the same secre key that we use to edcode the token and then pass that algorithm to the verifier
+//                JWTVerifier verifier = JWT.require(algorithm).build(); // this is the verifier that we need to use to verify the token
+//
+//                // and then now, we can do the decoded token
+//                DecodedJWT decodedJWT = verifier.verify(refresh_token); // this is the decoded token
+//
+//                String username = decodedJWT.getClaim("username").asString(); // get the username from the token
+//                AppUser user = userService.getUser(username);
+//                String access_token = JWT.create()
+//                        .withSubject(user.getId().toString())
+//                        .withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000))
+//                        .withIssuer(request.getRequestURI().toString())
+//                        .withClaim("username", user.getUsername())
+//                        .withClaim("roles", user.getRoles().stream().map(Role::getAuthority).collect(Collectors.toList()))
+//                        .sign(algorithm);
+//
+//
+//
+//
+//                Map<String, String> tokens = new HashMap<>();
+//                tokens.put("access_token", access_token);
+//                tokens.put("refresh_token", refresh_token); // 프론트에서 받은 refresh token을 그대로 넣어준다. , refresh 마저 유효기간이 지나면 새롭게 로그인 필요
                 response.setContentType(APPLICATION_JSON_VALUE);
                 new ObjectMapper().writeValue(response.getWriter(), tokens);
 

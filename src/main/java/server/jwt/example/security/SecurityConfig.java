@@ -15,6 +15,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import server.jwt.example.filter.CustomAuthenticationFilter;
 import server.jwt.example.filter.CustomAuthorizationFilter;
 import server.jwt.example.manager.CustomAuthenticationManager;
+import server.jwt.example.service.JwtService;
 
 import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.http.HttpMethod.POST;
@@ -28,7 +29,8 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
     private final CustomAuthenticationManager customAuthenticationManager;
-    //private final UserRepository userRepository;
+    private final JwtService jwtService;
+
 
 
 
@@ -59,7 +61,7 @@ public class SecurityConfig {
         // to change login url
         // this CustomAuthenticationFilter extending UsernamePasswordAuthenticationFilter
         // we can actually override this with our own custom autntication filter
-        CustomAuthenticationFilter customAuthenticationFilter = new CustomAuthenticationFilter(customAuthenticationManager);
+        CustomAuthenticationFilter customAuthenticationFilter = new CustomAuthenticationFilter(customAuthenticationManager,jwtService);
         customAuthenticationFilter.setFilterProcessesUrl("/api/login"); // we can not use loginProcessingUrl because it's defined in UsernamePasswordAuthenticationFilter because of jwt
 
 

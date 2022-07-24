@@ -16,6 +16,7 @@ import server.jwt.example.domain.AppUser;
 import server.jwt.example.dto.request.LoginDto;
 import server.jwt.example.manager.CustomAuthenticationManager;
 import server.jwt.example.security.PrincipalDetails;
+import server.jwt.example.service.JwtService;
 
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
@@ -36,9 +37,12 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
     // need to calling the authentication manager to authenticate the user
     private final CustomAuthenticationManager authenticationManager;
 
+    private final JwtService jwtService;
+
     @Autowired
-    public CustomAuthenticationFilter(CustomAuthenticationManager authenticationManager) {
+    public CustomAuthenticationFilter(CustomAuthenticationManager authenticationManager , JwtService jwtService) {
         this.authenticationManager = authenticationManager;
+        this.jwtService = jwtService;
     }
 
     // 사용자가 로그인할때 해당 CustomAuthenticationFilter를 거쳐서 , 실제로 로그인을 과정을 수행하고, 존재하는 사용자인지 확인한다.
@@ -84,51 +88,16 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
     // where need to do generate the token and then send that token over to the user
     // in response, going to just pass in the token that we need to send to the user
     @Override
-    protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain, Authentication authentication) throws IOException, ServletException {
-        // need to have some sort of way to generate the token , sign the token and then send it over to the user
-        // using library for make the token (JWT
-
-        // to get the user that's been successfully logged in, we can define a user
-        // so  that's the user coming from spring security
-        // so that's not the user will define in our domain, as you can see here, it's coming from org.springframework.security.core.userdetails.UserDetails
-        PrincipalDetails principalDetails = (PrincipalDetails) authentication.getPrincipal();
-        AppUser user = principalDetails.getAppUser();
-
-        // we can grab information from that logged in user to create the json web token
-        // define algorithm , we cas see that this is coming from the library that we just added
-        Algorithm algorithm = Algorithm.HMAC256("secret".getBytes());
+    protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain, Authentication authentication) throws IOException {
 
 
-        // 여기서의 user는 domain에서 만든 user가 아니라 userDetails이다. 주의하자.
-        String access_token = JWT.create()
-                .withSubject(user.getId().toString()) // subject can be really any String that we want , So that can be like , the user Id or the username or something unique about the user, so that we can identify the user by that specific token
-                .withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000)) // going to be one min, because it's a token that's going to have very short time to live so that they can give us the refresh token , and server give client a new token
-                .withIssuer(request.getRequestURI().toString()) // say like company name or the author of this token // SimpleGrantedAuthority 클래스는 String으로 이루어져 있었다. token claim에 저장할때는 GrantedAuthority 형태로 저장하고자 한다.
-                // need to convert list of granted authorities to list of strings
-                .withClaim("username" , user.getUsername())
-                .withClaim("roles" ,  principalDetails.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toList())) // authorities or roles that we put in for that specific user
-                .sign(algorithm);
-
-        // 우선 클라이언트는 최초 로그인 성공 시점에 access , refresh token 둘다 받는다.
-        // access token으로 계속 요청하다가, 토큰이 expried 되면서, 접근을 하지 못할때 프론트 측에서
-        // 빠르게(원할하게) 자신이 가지고 있는 Refresh Token을 가지고, Server에게 보낸다.
-        // Server에서 Refresh 토큰이 유효하면 새로운 Access Token을 발급하고 refresh 토큰도 그대로 준다. 클라이언트에게 전송한다.
-        // 클라이언트는 Access token을 받으면, 이를 이용해서 원래 요청하고자 했던 요청을 다시 요청을 진행한다.
-        // 여기서 의문점은 아니 그럼 그냥 Refresh token 받으면 그걸로 권한 확인해서 하면 되지 않느냐~~, 하지만 Refresh token에는 roles를 넣지 않았다. // refresh 토큰의 목적은 단순히, 권한처리가 아닌 검증에 중점점 둔다.
-        // 1:51:40에서 설명 나옴
-        // if access token expired, then client going to send the refresh token to the server, and then
-        // server is going to take that refresh token, validate it, and then give them another access token
-        String refresh_token = JWT.create()
-                .withSubject(user.getId().toString())
-                .withClaim("username" , user.getUsername())
-                .withExpiresAt(new Date(System.currentTimeMillis() + 30 * 60 * 1000)) // going to give this more time, give this a week or a day
-                .withIssuer(request.getRequestURI().toString()) // we don't need to pass roles
-                .sign(algorithm);
+        String access_token = jwtService.createAccessToken(request, authentication, "secret", 10);
+        String refresh_token = jwtService.createRefreshToken(request, authentication, "secret", 60);
 
         // we are going to return both tokens to the user
         // instead of setting headers here, want to actually send something in the response body
-        //response.setHeader("access_token" , access_token);
-        //response.setHeader("refresh_token" , refresh_token);
+        // response.setHeader("access_token" , access_token);
+        // response.setHeader("refresh_token" , refresh_token);
 
         Map<String , String> tokens = new HashMap<>();
         tokens.put("access_token" , access_token);
@@ -136,6 +105,64 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
         response.setContentType(APPLICATION_JSON_VALUE);
         new ObjectMapper().writeValue(response.getOutputStream(), tokens); // that's going to return everything in the body
 
-
     }
+
+//    public String getAccessToken(HttpServletRequest request, Authentication authentication , String algorithmKey , Integer validMinutes) throws IOException {
+//
+//        // need to have some sort of way to generate the token , sign the token and then send it over to the user
+//        // using library for make the token (JWT
+//
+//        // to get the user that's been successfully logged in, we can define a user
+//        // so  that's the user coming from spring security
+//        // so that's not the user will define in our domain, as you can see here, it's coming from principalDetails
+//        PrincipalDetails principalDetails = (PrincipalDetails) authentication.getPrincipal();
+//        AppUser user = principalDetails.getAppUser();
+//
+//        // we can grab information from that logged in user to create the json web token
+//        // define algorithm , we cas see that this is coming from the library that we just added
+//        Algorithm algorithm = Algorithm.HMAC256(algorithmKey.getBytes());
+//
+//        String access_token = JWT.create()
+//                .withSubject(user.getId().toString()) // subject can be really any String that we want , So that can be like , the user Id or the username or something unique about the user, so that we can identify the user by that specific token
+//                .withExpiresAt(new Date(System.currentTimeMillis() + validMinutes * 60 * 1000)) // going to be one min, because it's a token that's going to have very short time to live so that they can give us the refresh token , and server give client a new token
+//                .withIssuer(request.getRequestURI().toString()) // say like company name or the author of this token // SimpleGrantedAuthority 클래스는 String으로 이루어져 있었다. token claim에 저장할때는 GrantedAuthority 형태로 저장하고자 한다.
+//                // need to convert list of granted authorities to list of strings
+//                .withClaim("username" , user.getUsername())
+//                .withClaim("roles" ,  principalDetails.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toList())) // authorities or roles that we put in for that specific user
+//                .sign(algorithm);
+//
+//
+//        return access_token;
+//
+//    }
+
+//
+//    public String getRefreshToken(HttpServletRequest request, Authentication authentication , String algorithmKey , Integer validMinutes) throws Exception {
+//
+//
+//        PrincipalDetails principalDetails = (PrincipalDetails) authentication.getPrincipal();
+//        AppUser user = principalDetails.getAppUser();
+//
+//        Algorithm algorithm = Algorithm.HMAC256(algorithmKey.getBytes());
+//
+//        // 우선 클라이언트는 최초 로그인 성공 시점에 access , refresh token 둘다 받는다.
+//        // access token으로 계속 요청하다가, 토큰이 expried 되면서, 접근을 하지 못할때 프론트 측에서
+//        // 빠르게(원할하게) 자신이 가지고 있는 Refresh Token을 가지고, Server에게 보낸다.
+//        // Server에서 Refresh 토큰이 유효하면 새로운 Access Token을 발급하고 refresh 토큰도 그대로 준다. 클라이언트에게 전송한다.
+//        // 클라이언트는 Access token을 받으면, 이를 이용해서 원래 요청하고자 했던 요청을 다시 요청을 진행한다.
+//        // 여기서 의문점은 아니 그럼 그냥 Refresh token 받으면 그걸로 권한 확인해서 하면 되지 않느냐~~, 하지만 Refresh token에는 roles를 넣지 않았다. // refresh 토큰의 목적은 단순히, 권한처리가 아닌 검증에 중점점 둔다.
+//        // 1:51:40에서 설명 나옴
+//        // if access token expired, then client going to send the refresh token to the server, and then
+//        // server is going to take that refresh token, validate it, and then give them another access token
+//        String refresh_token = JWT.create()
+//                .withSubject(user.getId().toString()) // subject can be really any String that we want , So that can be like , the user Id or the username or something unique about the user, so that we can identify the user by that specific token
+//                .withClaim("username" , user.getUsername())
+//                .withExpiresAt(new Date(System.currentTimeMillis() + validMinutes * 60 * 1000)) // // going to give this more time, give this a week or a day
+//                .withIssuer(request.getRequestURI().toString()) // we don't need to pass roles in refresh token
+//                .sign(algorithm);
+//
+//        return refresh_token;
+//    }
+
+
 }
